@@ -1,0 +1,33 @@
+# Node dependencies & artifacts
+node_modules/
+dist/
+.vite/
+*.log
+
+# Python cache & virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Environment configurations
+.env
+.env.local
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# NOTE: Trained .pkl model files in models/ MUST be tracked and NOT ignored
+!models/*.pkl
+!*.pkl
