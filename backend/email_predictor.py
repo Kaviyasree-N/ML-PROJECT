@@ -50,60 +50,24 @@ class EmailPredictor:
             email_text += f" {urls}"
         cleaned = clean_text(email_text)
 
-        if self.vectorizer is not None and self.model is not None:
-            features = self.vectorizer.transform([cleaned])
-            pred_class = self.model.predict(features)[0]
-            proba = self.model.predict_proba(features)[0]
-            p_legit = float(proba[0])
-            p_spam = float(proba[1])
-        else:
-            # Calibrated evaluation matching SpamAssassin multinomial naive bayes results
-            sub_lower = subject.lower()
-            body_lower = body.lower()
+        # Must use actual trained Version 1 models
+        if self.vectorizer is None or self.model is None:
+            raise RuntimeError("Version 1 models (email_tfidf_vectorizer.pkl and email_naive_bayes_model.pkl) are not loaded.")
 
-            if "congratulations" in sub_lower and "prize" in sub_lower and "lucky winner" in body_lower:
-                p_spam = 0.7042
-            elif "meeting scheduled" in sub_lower and "conference room" in body_lower:
-                p_spam = 1.0 - 0.8871
-            elif "suspended" in sub_lower and "verify your account" in body_lower:
-                p_spam = 0.7884
-            else:
-                spam_triggers = ["prize", "winner", "won", "claim", "money", "suspended", "password", "urgent"]
-                legit_triggers = ["meeting", "scheduled", "team", "conference", "project", "thanks", "regards"]
-                
-                score = 0.0
-                for st in spam_triggers:
-                    if st in cleaned:
-                        score += 1.5
-                for lt in legit_triggers:
-                    if lt in cleaned:
-                        score -= 1.5
-                
-                prior = -0.86
-                z = prior + score * 0.75
-                p_spam = 1.0 / (1.0 + math.exp(-z))
-
-            p_legit = 1.0 - p_spam
+        features = self.vectorizer.transform([cleaned])
+        proba = self.model.predict_proba(features)[0]
+        # ClassLabel: 0 = Legitimate (ham), 1 = Spam
+        p_legit = float(proba[0])
+        p_spam = float(proba[1])
 
         is_spam = p_spam >= 0.5
         prediction = "Spam" if is_spam else "Legitimate"
-        confidence = round((p_spam if is_spam else p_legit) * 100, 2)
+        confidence = round((p_spam if is_spam else p_legit) * 100, 1)
 
         if is_spam:
-            reasons = []
-            lower_txt = (subject + " " + body).lower()
-            if any(w in lower_txt for w in ["winner", "prize", "won", "reward", "lottery", "cash", "claim", "$", "dollar"]):
-                reasons.append("unsolicited prize or financial reward promises")
-            if any(w in lower_txt for w in ["urgent", "immediately", "action required", "suspended", "expire", "verify your"]):
-                reasons.append("urgent account pressure or verification requests")
-            if any(w in lower_txt for w in ["free", "save up to", "lowest rates", "special promotion", "click here", "guarantee"]):
-                reasons.append("promotional or mass marketing phrasing")
-            if reasons:
-                reason = "Identified spam indicators: " + "; ".join(reasons) + "."
-            else:
-                reason = "Word frequencies and text patterns match characteristics typical of spam."
+            reason = "Spam-like patterns were detected in the email content."
         else:
-            reason = "Message vocabulary and structure are consistent with legitimate communication."
+            reason = "No strong spam patterns were detected."
 
         return {
             "subject": subject,

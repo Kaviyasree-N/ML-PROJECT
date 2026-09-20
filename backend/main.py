@@ -39,12 +39,14 @@ class EmailRequest(BaseModel):
 def health():
     return {"status": "ok", "service": "ML-PROJECT Backend"}
 
+@app.post("/predict-url")
 @app.post("/api/predict/url")
 def predict_url_endpoint(req: URLRequest):
     if not req.url or not req.url.strip():
         raise HTTPException(status_code=400, detail="URL cannot be empty")
     return url_predictor.predict(req.url)
 
+@app.post("/predict-email")
 @app.post("/api/predict/email")
 def predict_email_endpoint(req: EmailRequest):
     if not req.subject and not req.body:

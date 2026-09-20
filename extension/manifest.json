@@ -1,18 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Phishing URL & Spam Guard",
+  "name": "PhishGuard",
   "version": "1.0.0",
-  "description": "Real-time phishing URL detection and email/text spam scanner using machine learning models.",
+  "description": "Checks current website URL for phishing using trained machine learning models.",
   "permissions": [
-    "activeTab",
-    "tabs",
-    "storage"
-  ],
-  "host_permissions": [
-    "<all_urls>"
+    "activeTab"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Check Phishing & Spam Risk"
+    "default_title": "PhishGuard"
   }
 }

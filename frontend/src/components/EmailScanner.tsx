@@ -121,37 +121,43 @@ export const EmailScanner: React.FC = () => {
             {result.isSpam ? (
               <div
                 id="email-result-spam"
-                className="bg-amber-50/60 border border-amber-200 rounded-xl p-6 text-center"
+                className="bg-amber-50/70 border border-amber-200 rounded-xl p-6 text-center"
               >
                 <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-3">
                   <AlertTriangle className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-amber-900">Spam Detected</h3>
-                <p className="text-sm text-amber-800 mt-1">
-                  This email appears suspicious based on the model analysis.
-                </p>
-                <div className="mt-4 pt-4 border-t border-amber-200/60">
+                <h3 className="text-xl font-bold text-amber-900">⚠ Spam Email</h3>
+                <div className="mt-2">
                   <span className="text-xs font-semibold text-amber-900 bg-amber-100 px-3 py-1 rounded-full">
                     Confidence: {result.confidence}%
                   </span>
+                </div>
+                <div className="mt-4 pt-3 border-t border-amber-200/60 text-left max-w-md mx-auto">
+                  <p className="text-xs font-semibold text-amber-900 mb-1">Why we identified it:</p>
+                  <p className="text-sm text-amber-800 leading-relaxed">
+                    {result.reason}
+                  </p>
                 </div>
               </div>
             ) : (
               <div
                 id="email-result-legitimate"
-                className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-6 text-center"
+                className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-6 text-center"
               >
                 <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-emerald-900">Legitimate Email</h3>
-                <p className="text-sm text-emerald-800 mt-1">
-                  This email appears legitimate based on the model analysis.
-                </p>
-                <div className="mt-4 pt-4 border-t border-emerald-200/60">
+                <h3 className="text-xl font-bold text-emerald-900">✓ Legitimate Email</h3>
+                <div className="mt-2">
                   <span className="text-xs font-semibold text-emerald-900 bg-emerald-100 px-3 py-1 rounded-full">
                     Confidence: {result.confidence}%
                   </span>
+                </div>
+                <div className="mt-4 pt-3 border-t border-emerald-200/60 text-left max-w-md mx-auto">
+                  <p className="text-xs font-semibold text-emerald-900 mb-1">Why we identified it:</p>
+                  <p className="text-sm text-emerald-800 leading-relaxed">
+                    {result.reason}
+                  </p>
                 </div>
               </div>
             )}

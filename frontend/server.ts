@@ -50,67 +50,72 @@ async function startServer() {
     }
   });
 
-  app.post('/api/predict/url', async (req, res) => {
+  async function callPythonWithRetry(endpoint: string, body: any, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const pyRes = await fetch(`${PYTHON_API_URL}${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (pyRes.ok) {
+          return await pyRes.json();
+        }
+      } catch {
+        ensurePythonBackend();
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 600));
+        }
+      }
+    }
+    return null;
+  }
+
+  const handlePredictUrl = async (req: express.Request, res: express.Response) => {
     try {
       const { url } = req.body;
-      if (!url || typeof url !== 'string') {
+      if (!url || typeof url !== 'string' || !url.trim()) {
         return res.status(400).json({ error: 'Please provide a valid url string' });
       }
 
-      // 1. First attempt to predict using the real Python backend
-      try {
-        const pyRes = await fetch(`${PYTHON_API_URL}/api/predict/url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url })
-        });
-        if (pyRes.ok) {
-          const pyData = await pyRes.json();
-          return res.json(pyData);
-        }
-      } catch {
-        // Python server not ready or down, trigger auto-recovery and fall through to fallback
-        ensurePythonBackend();
+      const pyData = await callPythonWithRetry('/predict-url', { url: url.trim() });
+      if (pyData) {
+        return res.json(pyData);
       }
 
-      // 2. High-fidelity math mirror fallback
-      const result = predictUrl(url);
-      res.json(result);
+      return res.status(503).json({
+        error: 'Python ML inference service is currently starting. Please retry in a few moments.'
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'URL prediction failed' });
     }
-  });
+  };
 
-  app.post('/api/predict/email', async (req, res) => {
+  const handlePredictEmail = async (req: express.Request, res: express.Response) => {
     try {
       const { subject = '', body = '', urls = '' } = req.body;
       if (!subject && !body) {
         return res.status(400).json({ error: 'Please provide at least a subject or body' });
       }
 
-      // 1. First attempt to predict using the real Python backend
-      try {
-        const pyRes = await fetch(`${PYTHON_API_URL}/api/predict/email`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subject, body, urls })
-        });
-        if (pyRes.ok) {
-          const pyData = await pyRes.json();
-          return res.json(pyData);
-        }
-      } catch {
-        // Python server not ready or down, trigger auto-recovery and fall through to fallback
-        ensurePythonBackend();
+      const pyData = await callPythonWithRetry('/predict-email', { subject, body, urls });
+      if (pyData) {
+        return res.json(pyData);
       }
 
-      // 2. High-fidelity math mirror fallback
-      const result = predictEmail(subject, body, urls);
-      res.json(result);
+      return res.status(503).json({
+        error: 'Python ML inference service is currently starting. Please retry in a few moments.'
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Email prediction failed' });
     }
-  });
+  };
+
+  app.post('/predict-url', handlePredictUrl);
+  app.post('/api/predict/url', handlePredictUrl);
+
+  app.post('/predict-email', handlePredictEmail);
+  app.post('/api/predict/email', handlePredictEmail);
 
   // Vite middleware for development or static serving for production
   const frontendDir = path.resolve(__dirname);
