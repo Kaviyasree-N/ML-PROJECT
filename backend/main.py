@@ -12,6 +12,7 @@ from typing import Optional
 
 from url_predictor import url_predictor
 from email_predictor import email_predictor
+from threat_intel import check_google_safe_browsing, combine_url_assessment
 
 app = FastAPI(
     title="Phishing & Spam ML Detection API",
@@ -44,7 +45,21 @@ def health():
 def predict_url_endpoint(req: URLRequest):
     if not req.url or not req.url.strip():
         raise HTTPException(status_code=400, detail="URL cannot be empty")
-    return url_predictor.predict(req.url)
+    
+    # 1. Run the existing PhishGuard Logistic Regression model (unchanged)
+    ml_result = url_predictor.predict(req.url)
+
+    # 2. Perform separate threat-intelligence lookup using Google Safe Browsing
+    threat_intel = check_google_safe_browsing(req.url)
+
+    # 3. Combine the two independent results into a clear security assessment
+    security_assessment = combine_url_assessment(ml_result, threat_intel)
+
+    return {
+        **ml_result,
+        "threatIntel": threat_intel,
+        "securityAssessment": security_assessment
+    }
 
 @app.post("/predict-email")
 @app.post("/api/predict/email")

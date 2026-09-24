@@ -9,16 +9,38 @@ export interface UrlFeatureBreakdown {
   isSuspicious: boolean;
 }
 
+export interface ThreatIntelligenceResult {
+  status: 'unsafe' | 'not_found' | 'unavailable';
+  verdict: 'Known unsafe URL detected' | 'No matching unsafe resource found' | 'Threat intelligence unavailable';
+  provider: string;
+  matches: string[];
+  details: string;
+  disclaimer: string;
+}
+
+export interface SecurityAssessmentResult {
+  finalAssessment: 'Known unsafe resource' | 'Phishing indicators detected' | 'No strong suspicious indicators detected' | string;
+  assessmentLevel: 'danger' | 'warning' | 'safe';
+  summary: string;
+  recommendedAction: string;
+}
+
 export interface UrlPredictionResult {
   url: string;
   prediction: 'Phishing' | 'Legitimate';
   confidence: number;
+  modelProbability?: string;
+  reason?: string;
+  reasons?: string[];
+  recommendedAction?: string;
+  threatIntel?: ThreatIntelligenceResult;
+  securityAssessment?: SecurityAssessmentResult;
   riskScore: number; // 0 - 100
   probabilities: {
     phishing: number;
     legitimate: number;
   };
-  features: UrlFeatureBreakdown[];
+  features?: UrlFeatureBreakdown[];
   extractedMetrics: {
     url_length: number;
     url_entropy: number;
@@ -41,11 +63,15 @@ export interface EmailPredictionResult {
   cleanedText: string;
   prediction: 'Spam' | 'Legitimate';
   confidence: number;
+  modelProbability?: string;
+  reason?: string;
+  reasons?: string[];
+  recommendedAction?: string;
   spamProbability: number;
   legitimateProbability: number;
-  detectedSpamSignals: string[];
-  detectedLegitSignals: string[];
-  tokenStats: {
+  detectedSpamSignals?: string[];
+  detectedLegitSignals?: string[];
+  tokenStats?: {
     totalWords: number;
     urlsFound: number;
     emailsFound: number;
@@ -84,10 +110,10 @@ export interface ModelMetrics {
     f1Score: number;
     vocabSize: number;
     confusionMatrix: {
-      tn: number; // Legitimate correctly identified: 809
-      fp: number; // Legitimate classified as spam: 9
-      fn: number; // Spam classified as legit: 26
-      tp: number; // Spam correctly identified: 318
+      tn: number;
+      fp: number;
+      fn: number;
+      tp: number;
     };
   };
 }

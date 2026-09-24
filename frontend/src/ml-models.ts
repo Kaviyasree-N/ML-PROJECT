@@ -223,10 +223,54 @@ export function predictUrl(rawUrl: string): UrlPredictionResult {
   const confidence = Math.round((isPhishing ? pPhishing : pLegitimate) * 10000) / 100;
   const riskScore = Math.round(pPhishing * 100);
 
+  const reasons: string[] = [];
+  if (isPhishing) {
+    if (extracted.suspicious_file_extension === 1) {
+      reasons.push("Suspicious file extension commonly associated with malware or exploits.");
+    }
+    if (extracted.has_hyphen_in_domain === 1) {
+      reasons.push("Hyphens in domain name commonly used to impersonate legitimate services.");
+    }
+    if (extracted.subdomain_count >= 2) {
+      reasons.push(`Multiple subdomains (${extracted.subdomain_count}) detected before the root domain.`);
+    }
+    if (extracted.url_entropy > 4.2) {
+      reasons.push("Unusual character randomness detected in the URL structure.");
+    }
+    if (extracted.url_length > 75) {
+      reasons.push("Unusually long web address.");
+    }
+    if (extracted.domain_name_length > 25) {
+      reasons.push("Unusually long domain name.");
+    }
+    if (extracted.query_param_count >= 3) {
+      reasons.push("High number of dynamic query parameters.");
+    }
+    if (extracted.path_length > 40) {
+      reasons.push("Unusually long or obfuscated URL path.");
+    }
+
+    if (reasons.length === 0) {
+      reasons.push("Suspicious URL structure and domain patterns were detected.");
+    }
+  } else {
+    reasons.push("No strong suspicious URL patterns were detected.");
+  }
+
+  const selectedReasons = reasons.slice(0, 3);
+  const reasonSummary = selectedReasons.length === 1 ? selectedReasons[0] : "Suspicious URL structure and domain patterns were detected.";
+  const recommendedAction = isPhishing
+    ? "Do not open this URL or submit any personal credentials, passwords, or financial details."
+    : "This website appears normal. However, always verify the domain name in the address bar before logging in.";
+
   return {
     url: rawUrl,
     prediction,
     confidence,
+    modelProbability: `${confidence}%`,
+    reason: reasonSummary,
+    reasons: selectedReasons,
+    recommendedAction,
     riskScore,
     probabilities: {
       phishing: Math.round(pPhishing * 1000) / 1000,
@@ -411,6 +455,14 @@ export function predictEmail(subject: string, body: string, urls: string = ''): 
   const prediction: 'Spam' | 'Legitimate' = isSpam ? 'Spam' : 'Legitimate';
   const confidence = Math.round((isSpam ? pSpam : pLegit) * 10000) / 100;
 
+  const reasons = isSpam
+    ? ["Spam-like patterns were detected in the email."]
+    : ["No strong spam patterns were detected."];
+  const reasonSummary = reasons[0];
+  const recommendedAction = isSpam
+    ? "Do not reply to this email, click any included links, or download attachments."
+    : "This email appears normal, but exercise standard caution if unexpected requests for sensitive information are made.";
+
   return {
     subject,
     body,
@@ -418,6 +470,10 @@ export function predictEmail(subject: string, body: string, urls: string = ''): 
     cleanedText: cleaned,
     prediction,
     confidence,
+    modelProbability: `${confidence}%`,
+    reason: reasonSummary,
+    reasons,
+    recommendedAction,
     spamProbability: Math.round(pSpam * 1000) / 1000,
     legitimateProbability: Math.round(pLegit * 1000) / 1000,
     detectedSpamSignals,

@@ -37,9 +37,19 @@ class EmailPredictor:
 
     def _load_models(self):
         try:
+            import sys
+            import numpy
+            import scipy.sparse as sp
+            if 'numpy._core' not in sys.modules and hasattr(numpy, 'core'):
+                sys.modules['numpy._core'] = numpy.core
+                sys.modules['numpy._core.multiarray'] = numpy.core.multiarray
             if os.path.exists(VECTORIZER_PATH) and os.path.exists(MODEL_PATH):
                 self.vectorizer = joblib.load(VECTORIZER_PATH)
                 self.model = joblib.load(MODEL_PATH)
+                if hasattr(self.vectorizer, '_tfidf') and hasattr(self.vectorizer._tfidf, '__dict__'):
+                    if 'idf_' in self.vectorizer._tfidf.__dict__ and not hasattr(self.vectorizer._tfidf, '_idf_diag'):
+                        idf = self.vectorizer._tfidf.__dict__['idf_']
+                        self.vectorizer._tfidf._idf_diag = sp.diags(idf, offsets=0, shape=(len(idf), len(idf)), format='csr', dtype=numpy.float64)
         except Exception as e:
             print(f"Warning: Could not load pickled email models directly: {e}")
 
@@ -65,9 +75,13 @@ class EmailPredictor:
         confidence = round((p_spam if is_spam else p_legit) * 100, 1)
 
         if is_spam:
-            reason = "Spam-like patterns were detected in the email content."
+            reasons = ["Spam-like patterns were detected in the email."]
+            reason_summary = "Spam-like patterns were detected in the email."
+            recommended_action = "Do not reply to this email, click any included links, or download attachments."
         else:
-            reason = "No strong spam patterns were detected."
+            reasons = ["No strong spam patterns were detected."]
+            reason_summary = "No strong spam patterns were detected."
+            recommended_action = "This email appears normal, but exercise standard caution if unexpected requests for sensitive information are made."
 
         return {
             "subject": subject,
@@ -75,7 +89,10 @@ class EmailPredictor:
             "cleanedText": cleaned,
             "prediction": prediction,
             "confidence": confidence,
-            "reason": reason,
+            "modelProbability": f"{confidence}%",
+            "reason": reason_summary,
+            "reasons": reasons,
+            "recommendedAction": recommended_action,
             "spamProbability": round(p_spam, 4),
             "legitimateProbability": round(p_legit, 4)
         }
