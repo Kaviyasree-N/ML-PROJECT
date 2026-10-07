@@ -7,11 +7,28 @@ import { spawn } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import { predictUrl, predictEmail, getModelMetrics } from './src/ml-models.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentFilename = (typeof import.meta !== 'undefined' && import.meta?.url)
+  ? fileURLToPath(import.meta.url)
+  : (typeof __filename !== 'undefined' ? __filename : path.resolve(process.cwd(), 'server.ts'));
+const currentDirname = (typeof __dirname !== 'undefined' && __dirname)
+  ? __dirname
+  : path.dirname(currentFilename);
 
 const PYTHON_PORT = 5001;
 const PYTHON_API_URL = `http://127.0.0.1:${PYTHON_PORT}`;
+
+function findProjectRoot(): string {
+  let dir = currentDirname;
+  for (let i = 0; i < 4; i++) {
+    if (fs.existsSync(path.join(dir, 'backend', 'main.py')) || fs.existsSync(path.join(dir, 'models'))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(process.cwd());
+}
 
 function getSafeBrowsingApiKey(): string {
   let key = process.env.GOOGLE_SAFE_BROWSING_API_KEY || process.env.SAFE_BROWSING_API_KEY;
@@ -20,11 +37,13 @@ function getSafeBrowsingApiKey(): string {
   }
 
   // Fallback to check potential .env files
+  const projectRoot = findProjectRoot();
   const searchDirs = [
-    path.resolve(__dirname, '..'),
-    path.resolve(__dirname),
+    projectRoot,
+    path.resolve(projectRoot, 'frontend'),
+    path.resolve(projectRoot, 'backend'),
+    currentDirname,
     process.cwd(),
-    path.resolve(process.cwd(), 'frontend'),
   ];
   for (const d of searchDirs) {
     const envFile = path.join(d, '.env');
@@ -49,26 +68,66 @@ function getSafeBrowsingApiKey(): string {
   return '';
 }
 
+let pythonBackendStatus: 'unknown' | 'ready' | 'unavailable' = 'unknown';
+let isSpawningPython = false;
+
 function ensurePythonBackend() {
   getSafeBrowsingApiKey();
-  fetch(`${PYTHON_API_URL}/api/health`)
+  if (pythonBackendStatus === 'unavailable' || isSpawningPython) {
+    return;
+  }
+  isSpawningPython = true;
+  fetch(`${PYTHON_API_URL}/api/health`, { signal: AbortSignal.timeout(1000) })
+    .then((res) => {
+      if (res.ok) {
+        pythonBackendStatus = 'ready';
+      }
+    })
     .catch(() => {
-      const projectRoot = path.resolve(__dirname, '..');
-      const pyProcess = spawn('python3', ['-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--port', String(PYTHON_PORT)], {
-        cwd: projectRoot,
-        stdio: 'inherit',
-        detached: false,
-        env: process.env
-      });
-      pyProcess.on('error', (err) => {
-        console.warn('Could not spawn Python backend:', err.message);
-      });
+      const projectRoot = findProjectRoot();
+      const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+      try {
+        const pyProcess = spawn(pyCmd, ['-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--port', String(PYTHON_PORT)], {
+          cwd: projectRoot,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          detached: false,
+          env: process.env
+        });
+
+        pyProcess.stdout?.on('data', (data) => {
+          if (data.toString().includes('Application startup complete')) {
+            pythonBackendStatus = 'ready';
+          }
+        });
+
+        pyProcess.stderr?.on('data', (data) => {
+          const str = data.toString();
+          if (str.includes('No module named') || str.includes('ModuleNotFoundError') || str.includes('not found')) {
+            pythonBackendStatus = 'unavailable';
+          }
+        });
+
+        pyProcess.on('error', () => {
+          pythonBackendStatus = 'unavailable';
+        });
+
+        pyProcess.on('exit', (code) => {
+          if (code !== 0) {
+            pythonBackendStatus = 'unavailable';
+          }
+        });
+      } catch {
+        pythonBackendStatus = 'unavailable';
+      }
+    })
+    .finally(() => {
+      isSpawningPython = false;
     });
 }
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   ensurePythonBackend();
 
@@ -89,21 +148,31 @@ async function startServer() {
     }
   });
 
-  async function callPythonWithRetry(endpoint: string, body: any, maxRetries = 3) {
+  async function callPythonWithRetry(endpoint: string, body: any, maxRetries = 2) {
+    if (pythonBackendStatus === 'unavailable') {
+      return null;
+    }
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 1200);
         const pyRes = await fetch(`${PYTHON_API_URL}${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
+          body: JSON.stringify(body),
+          signal: controller.signal
         });
+        clearTimeout(t);
         if (pyRes.ok) {
+          pythonBackendStatus = 'ready';
           return await pyRes.json();
         }
       } catch {
-        ensurePythonBackend();
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 600));
+        if (attempt === 1 && pythonBackendStatus !== 'unavailable') {
+          ensurePythonBackend();
+          await new Promise((r) => setTimeout(r, 400));
+        } else {
+          pythonBackendStatus = 'unavailable';
         }
       }
     }
@@ -308,16 +377,20 @@ async function startServer() {
   app.post('/api/predict/email', handlePredictEmail);
 
   // Vite middleware for development or static serving for production
-  const frontendDir = path.resolve(__dirname);
-  if (process.env.NODE_ENV !== 'production') {
+  const frontendDir = path.resolve(currentDirname.endsWith('dist') ? path.join(currentDirname, '..') : currentDirname);
+  const isProduction = process.env.NODE_ENV === 'production' || currentDirname.endsWith('dist') || fs.existsSync(path.resolve(frontendDir, 'dist', 'index.html'));
+
+  if (!isProduction) {
     const vite = await createViteServer({
       root: frontendDir,
-      server: { middlewareMode: true, host: '0.0.0.0', port: 3000 },
+      server: { middlewareMode: true, host: '0.0.0.0', port: PORT },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(frontendDir, 'dist');
+    const distPath = fs.existsSync(path.resolve(currentDirname, 'index.html'))
+      ? currentDirname
+      : path.resolve(frontendDir, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

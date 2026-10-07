@@ -1,0 +1,10 @@
+node_modules
+frontend/node_modules
+dist
+frontend/dist
+.git
+.env
+.DS_Store
+PhishGuard_PBL_Report.docx
+build_pbl_report_docx.py
+notebooks
