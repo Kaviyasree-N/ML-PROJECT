@@ -4,24 +4,31 @@
 
 ---
 
-## 🚀 Run in a Single Command
+## 🚀 Running the Project (Simple Commands)
 
 After cloning the repository from GitHub:
 
 ```bash
-git clone https://github.com/kaviyasreen251207/phishguard.git
-cd phishguard
+git clone https://github.com/Kaviyasree-N/ML-PROJECT.git
+cd ML-PROJECT
 ```
 
-### Option A: The Easiest Way (Auto-setup & Run)
-Run the all-in-one startup script:
+### On Windows (Command Prompt / PowerShell):
+Navigate into `frontend` and run:
+
+```cmd
+cd frontend
+npm install
+npm run dev
+```
+*(Or simply double-click `start.bat` in the root folder).*
+
+### On Linux / Mac:
 ```bash
 ./start.sh
 ```
-*(On Windows or Unix systems where `npm` is preferred)*:
-```bash
-npm install && npm start
-```
+
+---
 
 That's it! Open your browser at:
 👉 **`http://localhost:3000`**

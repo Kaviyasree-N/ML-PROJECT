@@ -127,7 +127,9 @@ function ensurePythonBackend() {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = (process.env.PORT && process.env.PORT !== '8080')
+    ? parseInt(process.env.PORT, 10)
+    : 3000;
 
   ensurePythonBackend();
 
@@ -376,24 +378,50 @@ async function startServer() {
   app.post('/predict-email', handlePredictEmail);
   app.post('/api/predict/email', handlePredictEmail);
 
-  // Vite middleware for development or static serving for production
+  // Static serving for pre-built production bundle or development with Vite
   const frontendDir = path.resolve(currentDirname.endsWith('dist') ? path.join(currentDirname, '..') : currentDirname);
-  const isProduction = process.env.NODE_ENV === 'production' || currentDirname.endsWith('dist') || fs.existsSync(path.resolve(frontendDir, 'dist', 'index.html'));
+  const distPath = path.resolve(frontendDir, 'dist');
+  const distIndexPath = path.join(distPath, 'index.html');
 
-  if (!isProduction) {
+  if (fs.existsSync(distIndexPath)) {
+    // Pre-built bundle: serve compiled assets directly with 100% correct MIME types
+    app.use(express.static(distPath));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/predict')) {
+        return next();
+      }
+      res.sendFile(distIndexPath);
+    });
+  } else {
+    // Development mode: Vite middleware with explicit config
     const vite = await createViteServer({
+      configFile: path.resolve(frontendDir, 'vite.config.ts'),
       root: frontendDir,
-      server: { middlewareMode: true, host: '0.0.0.0', port: PORT },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = fs.existsSync(path.resolve(currentDirname, 'index.html'))
-      ? currentDirname
-      : path.resolve(frontendDir, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+
+    app.use('*', async (req, res, next) => {
+      const url = req.originalUrl;
+      if (url.startsWith('/api') || url.startsWith('/predict') || path.extname(url)) {
+        return next();
+      }
+      try {
+        const indexPath = path.resolve(frontendDir, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          let template = fs.readFileSync(indexPath, 'utf-8');
+          template = await vite.transformIndexHtml(url, template);
+          res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+        } else {
+          next();
+        }
+      } catch (e: any) {
+        if (vite) {
+          vite.ssrFixStacktrace(e);
+        }
+        next(e);
+      }
     });
   }
 
